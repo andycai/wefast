@@ -1,0 +1,13 @@
+#!/bin/bash
+echo "Script path: $0"
+echo "First argument: $1"
+echo "Second argument: $2"
+echo "Third argument: $3"
+echo "Fourth argument: $4"
+echo "Fifth argument: $5"
+echo "Sixth argument: $6"
+echo "Environment variable repository: $repository"
+echo "Environment variable platform: $platform"
+echo "Environment variable publishType: $publishType"
+echo "Environment variable ext: $ext"
+echo "Environment variable params: $params"

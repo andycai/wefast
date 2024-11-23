@@ -1,0 +1,17 @@
+/* 我们可以保留这些自定义样式 */
+
+[x-cloak] {
+    display: none !important;
+}
+
+.max-h-100 {
+    max-height: 32rem;
+}
+
+.sticky-nav {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}

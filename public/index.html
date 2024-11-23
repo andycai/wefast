@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏开发辅助</title>
+    <script src="/js/alpine-3.14.1.js" defer></script>
+    <script src="/js/tailwind-3.4.5.js"></script>
+    <script src="/js/chart-4.4.4.js"></script>
+    <script src="/js/hammer-2.0.8.js"></script>
+    <script src="/js/chartjs-plugin-zoom.min.js"></script>
+    <script src="/js/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body class="bg-gray-100">
+    <div x-data="logSystem()" class="max-w-[3600px] w-full mx-auto">
+        <!-- 通知组件 -->
+        <div
+            x-show="notification.show"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 transform -translate-y-2"
+            x-transition:enter-end="opacity-100 transform translate-y-0"
+            x-transition:leave="transition ease-in duration-300"
+            x-transition:leave-start="opacity-100 transform translate-y-0"
+            x-transition:leave-end="opacity-0 transform -translate-y-2"
+            class="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999]"
+        >
+            <div
+                :class="{
+                    'bg-green-500': notification.type === 'success',
+                    'bg-red-500': notification.type === 'error',
+                    'bg-yellow-500': notification.type === 'warning'
+                }"
+                class="rounded-lg shadow-lg p-4 text-white min-w-[200px] text-center"
+            >
+                <p x-text="notification.message"></p>
+            </div>
+        </div>
+
+        <!-- 顶部导航菜单 -->
+        <nav class="sticky-nav bg-white shadow-md">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-center h-16"> <!-- 修改这里：移除 justify-between，添加 justify-center -->
+                    <div class="flex space-x-4"> <!-- 增加间距 -->
+                        <a href="#" @click="viewStats" 
+                           class="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-blue-100 transition-colors duration-200"
+                           :class="{ 'bg-blue-100': currentView === 'stats' }">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                            性能
+                        </a>
+                        <a href="#" @click="viewLogs" 
+                           class="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-blue-100 transition-colors duration-200"
+                           :class="{ 'bg-blue-100': currentView === 'logs' }">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                            </svg>
+                            日志
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主要内容区域 -->
+        <div class="p-4">
+            <!-- 错误日志列表 -->
+            <div class="bg-white p-4 rounded-lg shadow" x-show="currentView === 'logs'" x-cloak>
+                <!-- Date selection and delete button -->
+                <div class="mb-4 flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="date" x-model="selectedDate" class="p-2 border rounded mr-2">
+                        <button @click="deleteLogsBefore()"
+                            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+                            删除日期前数据
+                        </button>
+                    </div>
+                    <!-- 搜索输入框移到右边 -->
+                    <div class="w-1/3">
+                        <input type="text" x-model="searchQuery" @input="debounceSearch()" placeholder="搜索标题或角色名..."
+                            class="w-full p-2 border rounded">
+                    </div>
+                </div>
+
+                <!-- 添加条件渲染 -->
+                <template x-if="total > 0">
+                    <!-- Top Pagination -->
+                    <div class="mt-4 flex justify-between items-center">
+                        <div>
+                            <span x-text="`显示 ${(page - 1) * limit + 1} to ${Math.min(page * limit, total)} of ${total}`"></span>
+                        </div>
+                        <div>
+                            <button @click="changePage(page - 1)" :disabled="page === 1"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                上一页
+                            </button>
+                            <button @click="changePage(page + 1)" :disabled="page * limit >= total"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                下一页
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="total > 0">
+                    <!-- 日志表格 -->
+                    <table class="w-full border-collapse mt-4">
+                        <thead>
+                            <tr class="bg-gray-200">
+                                <th class="text-left p-2 border">App ID</th>
+                                <th class="text-left p-2 border">包名</th>
+                                <th class="text-left p-2 border">角色</th>
+                                <th class="text-left p-2 border">设备</th>
+                                <th class="text-left p-2 border">标题</th>
+                                <th class="text-left p-2 border">日志时间</th>
+                                <th class="text-left p-2 border">创建时间</th>
+                                <th class="text-left p-2 border">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="log in logs" :key="log.id">
+                                <tr @click="showLogDetails(log)" class="cursor-pointer hover:bg-gray-100">
+                                    <td class="p-2 border" x-text="log.app_id"></td>
+                                    <td class="p-2 border" x-text="log.package"></td>
+                                    <td class="p-2 border" x-text="log.role_name"></td>
+                                    <td class="p-2 border" x-text="log.device"></td>
+                                    <td class="p-2 border" x-text="log.log_message.substring(0, 70) + '...'"></td>
+                                    <td class="p-2 border" x-text="formatDate(log.log_time)"></td>
+                                    <td class="p-2 border" x-text="formatDate(log.create_at)"></td>
+                                    <td class="p-2 border">
+                                        <button @click.stop="deleteLog(log.id)" class="p-1 text-red-500 hover:text-red-700" title="删除">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+
+                <template x-if="total > 0">
+                    <!-- Bottom pagination -->
+                    <div class="mt-4 flex justify-between items-center">
+                        <div>
+                            <span x-text="`显示 ${(page - 1) * limit + 1} to ${Math.min(page * limit, total)} of ${total}`"></span>
+                        </div>
+                        <div>
+                            <button @click="changePage(page - 1)" :disabled="page === 1"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                上一页
+                            </button>
+                            <button @click="changePage(page + 1)" :disabled="page * limit >= total"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                下一页
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 无数据提示 -->
+                <template x-if="total === 0">
+                    <div class="text-center py-16 text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <p class="text-xl">暂无日志记录</p>
+                        <p class="text-sm mt-2">当前查询条件下没有找到任何日志数据</p>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 统计数据列表 -->
+            <div class="bg-white p-4 rounded-lg shadow" x-show="currentView === 'stats'">
+                <div class="mb-4 flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="date" x-model="selectedDate" class="p-2 border rounded mr-2">
+                        <button @click="deleteStatsBefore()"
+                            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+                            删除日期前数据
+                        </button>
+                    </div>
+                    <!-- 新增：搜索输入框 -->
+                    <div class="w-1/3">
+                        <input type="text" x-model="statsSearchQuery" @input="debounceStatsSearch()" 
+                               placeholder="搜索唯一ID或角色名..." 
+                               class="w-full p-2 border rounded">
+                    </div>
+                </div>
+
+                <template x-if="statsTotal > 0">
+                    <!-- Pagination -->
+                    <div class="mt-4 flex justify-between items-center">
+                        <div>
+                            <span
+                                x-text="`显示 ${(statsPage - 1) * statsLimit + 1} to ${Math.min(statsPage * statsLimit, statsTotal)} of ${statsTotal}`"></span>
+                        </div>
+                        <div>
+                            <button @click="changeStatsPage(statsPage - 1)" :disabled="statsPage === 1"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                上一页
+                            </button>
+                            <button @click="changeStatsPage(statsPage + 1)" :disabled="statsPage * statsLimit >= statsTotal"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                下一页
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 添加条件渲染 -->
+                <template x-if="statsTotal > 0">
+                    <!-- 统计数据表格 -->
+                    <table class="w-full border-collapse mt-4">
+                        <thead>
+                            <tr class="bg-gray-200">
+                                <th class="text-left p-2 border">唯一ID</th>
+                                <th class="text-left p-2 border">App ID</th>
+                                <th class="text-left p-2 border">包名</th>
+                                <th class="text-left p-2 border">角色</th>
+                                <th class="text-left p-2 border">设备</th>
+                                <th class="text-left p-2 border">CPU</th>
+                                <th class="text-left p-2 border">GPU</th>
+                                <th class="text-left p-2 border">内存</th>
+                                <th class="text-left p-2 border">统计时间</th>
+                                <th class="text-left p-2 border">创建时间</th>
+                                <th class="text-left p-2 border">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="stat in stats" :key="stat.id">
+                                <tr @click="showStatDetails(stat)" class="cursor-pointer hover:bg-gray-100">
+                                    <td class="p-2 border" x-text="stat.login_id"></td>
+                                    <td class="p-2 border" x-text="stat.app_id"></td>
+                                    <td class="p-2 border" x-text="stat.package_name"></td>
+                                    <td class="p-2 border" x-text="stat.role_name"></td>
+                                    <td class="p-2 border" x-text="stat.device_name"></td>
+                                    <td class="p-2 border" x-text="stat.system_cpu"></td>
+                                    <td class="p-2 border" x-text="stat.graphics_divice"></td>
+                                    <td class="p-2 border" x-text="stat.system_mem"></td>
+                                    <td class="p-2 border" x-text="formatDate(stat.mtime)"></td>
+                                    <td class="p-2 border" x-text="formatDate(stat.created_at)"></td>
+                                    <td class="p-2 border">
+                                        <button @click.stop="deleteStat(stat.id)" class="p-1 text-red-500 hover:text-red-700" title="删除">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+
+                <template x-if="statsTotal > 0">
+                    <!-- Pagination -->
+                    <div class="mt-4 flex justify-between items-center">
+                        <div>
+                            <span x-text="`显示 ${(statsPage - 1) * statsLimit + 1} to ${Math.min(statsPage * statsLimit, statsTotal)} of ${statsTotal}`"></span>
+                        </div>
+                        <div>
+                            <button @click="changeStatsPage(statsPage - 1)" :disabled="statsPage === 1"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                上一页
+                            </button>
+                            <button @click="changeStatsPage(statsPage + 1)" :disabled="statsPage * statsLimit >= statsTotal"
+                                class="px-2 py-1 bg-blue-500 text-white rounded disabled:opacity-50">
+                                下一页
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 无数据提示 -->
+                <template x-if="statsTotal === 0">
+                    <div class="text-center py-16 text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <p class="text-xl">暂无统计数据</p>
+                        <p class="text-sm mt-2">当前查询条件下没有找到任何统计数据</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Log details modal -->
+        <div x-show="showModal" 
+             x-cloak 
+             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full"
+             @click.self="showModal = false">
+            <div class="relative top-20 mx-auto p-5 border w-3/4 shadow-lg rounded-md bg-white">
+                <!-- Close button -->
+                <button @click="showModal = false" class="absolute top-2 right-2 text-gray-600 hover:text-gray-900 transition-colors duration-200">
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+
+                <!-- Navigation buttons -->
+                <div class="absolute top-14 right-2 flex flex-col space-y-2">
+                    <!-- Previous button -->
+                    <button @click="showPreviousLog()" class="text-white bg-blue-500 hover:bg-blue-600 rounded-full p-1 transition-colors duration-200">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                        </svg>
+                    </button>
+
+                    <!-- Next button -->
+                    <button @click="showNextLog()" class="text-white bg-blue-500 hover:bg-blue-600 rounded-full p-1 transition-colors duration-200">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="mt-3">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4" x-text="selectedLog.app_id"></h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p class="text-sm text-gray-500">
+                                <strong>Package:</strong> <span x-text="selectedLog.package"></span>
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                <strong>Role Name:</strong> <span x-text="selectedLog.role_name"></span>
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                <strong>Device:</strong> <span x-text="selectedLog.device"></span>
+                            </p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">
+                                <strong>Log Type:</strong> <span x-text="selectedLog.log_type"></span>
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                <strong>Time:</strong> <span
+                                    x-text="formatDate(selectedLog.log_time)"></span>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="font-bold mb-2">Message:</h4>
+                        <p x-text="selectedLog.log_message"
+                            class="text-sm text-gray-600 bg-gray-100 p-2 rounded whitespace-pre-wrap break-words"></p>
+                    </div>
+                    <div class="mt-4">
+                        <h4 class="font-bold mb-2">Stack:</h4>
+                        <pre x-html="formatStack(selectedLog.log_stack)"
+                            class="text-sm text-gray-600 bg-gray-100 p-2 rounded whitespace-pre-wrap break-words overflow-x-auto max-h-100"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats details modal -->
+        <div x-show="showStatsModal" 
+             x-cloak 
+             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full"
+             @click.self="hideStatDetails()">
+            <div class="relative top-20 mx-auto p-5 border w-auto shadow-lg rounded-md bg-white">
+                <!-- Close button -->
+                <button @click="hideStatDetails()"
+                    class="absolute top-2 right-2 text-gray-600 hover:text-gray-900 transition-colors duration-200 z-10">
+                    <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+
+                <!-- Navigation buttons -->
+                <div class="absolute top-14 right-3 flex flex-col space-y-2 z-10">
+                    <!-- Previous button -->
+                    <button @click="showPreviousStat()" class="text-white bg-blue-500 hover:bg-blue-600 rounded-full p-1 transition-colors duration-200">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                        </svg>
+                    </button>
+
+                    <!-- Next button -->
+                    <button @click="showNextStat()" class="text-white bg-blue-500 hover:bg-blue-600 rounded-full p-1 transition-colors duration-200">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap">
+                    <div class="w-full lg:w-3/4 pr-4 border-r-2">
+                        <div class="mb-4 flex flex-wrap">
+                            <div class="w-3/4 grid grid-cols-3 gap-2">
+                                <!-- Display statsRecord data here -->
+                                <p><strong>Login ID:</strong> <span x-text="selectedStat.login_id"></span></p>
+                                <p><strong>App ID:</strong> <span x-text="selectedStat.app_id"></span></p>
+                                <p><strong>包名:</strong> <span x-text="selectedStat.package_name"></span></p>
+                                <p><strong>Role Name:</strong> <span x-text="selectedStat.role_name"></span></p>
+                                <p><strong>产品名称:</strong> <span x-text="selectedStat.product_name"></span></p>
+                                <p><strong>设备名:</strong> <span x-text="selectedStat.device_name"></span></p>
+                                <p><strong>CPU:</strong> <span x-text="selectedStat.system_cpu"></span></p>
+                                <p><strong>系统内存:</strong> <span x-text="selectedStat.system_mem"></span></p>
+                                <p><strong>GPU:</strong> <span x-text="selectedStat.graphics_divice"></span></p>
+                                <p><strong>GPU内存:</strong> <span x-text="selectedStat.graphics_mem"></span></p>
+                                <p><strong>统计时间:</strong> <span x-text="formatDate(selectedStat.mtime)"></span></p>
+                                <p><strong>创建时间:</strong> <span x-text="formatDate(selectedStat.created_at)"></span></p>
+                            </div>
+                            <div id="screenshot" class="w-1/4">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4">
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'fpsChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'fpsChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('fpsChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="fpsChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'memoryChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'memoryChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('memoryChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="memoryChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'textureChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'textureChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('textureChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="textureChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'meshChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'meshChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('meshChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="meshChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'animationChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'animationChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('animationChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="animationChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'audioChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'audioChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('audioChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="audioChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'fontChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'fontChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('fontChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="fontChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'textAssetChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'textAssetChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('textAssetChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="textAssetChart"></canvas>
+                            </div>
+                            <div class="h-[35vh] relative">
+                                <div class="absolute top-2 right-2 z-10 flex space-x-2">
+                                    <button @click="navigateChartPoint('previousPoint', 'shaderChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="navigateChartPoint('nextPoint', 'shaderChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                    <button @click="resetZoom('shaderChart')" class="px-2 py-1 bg-blue-500 text-white rounded text-sm">
+                                        <svg class="h-4 w-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <canvas id="shaderChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-full lg:w-1/4 mt-4 lg:mt-0 px-2">
+                        <h3 class="text-lg font-bold mb-2">Process Info</h3>
+                        <pre id="processInfo" class="whitespace-pre-wrap break-words text-sm bg-gray-100 p-2 rounded"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js?v=2"></script>
+
+    <!-- 在 body 标签的末尾，在最后的 </div> 之后添加以下代码 -->
+    <div id="enlargedImageContainer" x-show="isEnlargedImageVisible" 
+         @click.away="hideEnlarged()"
+         class="fixed inset-0 flex items-center justify-center z-[9999] bg-black bg-opacity-50 hidden">
+        <div class="bg-white p-4 rounded-lg shadow-lg">
+            <img id="enlargedImage" :src="enlargedImageSrc" alt="Enlarged Stats Image" class="max-w-[90vw] max-h-[90vh] rounded">
+        </div>
+    </div>
+
+</body>
+
+</html>
