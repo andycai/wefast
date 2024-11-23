@@ -6,6 +6,7 @@ from app.models import FileInfo
 from pathlib import Path
 
 router = APIRouter()
+base_path = Path.cwd() / "output"
 
 def get_file_info(path: Path) -> FileInfo:
     """获取文件或目录的信息"""
@@ -32,7 +33,6 @@ async def list_directory(path: str = ""):
     """列出指定目录下的文件和子目录"""
     try:
         # 转换为绝对路径并进行安全检查
-        base_path = Path.cwd() / "output"
         target_path = (base_path / path).resolve()
         
         # 确保路径不会超出基础目录
@@ -79,7 +79,6 @@ async def read_file(path: str):
     """读取文件内容"""
     try:
         # 转换为绝对路径并进行安全检查
-        base_path = Path.cwd()
         file_path = (base_path / path).resolve()
         
         # 确保路径不会超出基础目录
@@ -141,7 +140,6 @@ async def read_file(path: str):
 async def get_path_info(path: str):
     """获取文件或目录的详细信息"""
     try:
-        base_path = Path.cwd()
         target_path = (base_path / path).resolve()
         
         if not str(target_path).startswith(str(base_path)):
