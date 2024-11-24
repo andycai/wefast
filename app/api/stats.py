@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 import aiosqlite
 from app.database import get_db
-from app.models import StatsRecord, StatsRecordDB, StatsRecordAPI, StatsInfoDB, StatsInfoAPI
+from app.models import StatsRecord, StatsInfo, StatsRecordDB, StatsRecordAPI, StatsInfoDB, StatsInfoAPI
 from typing import List, Optional
 from datetime import datetime, time
 
@@ -28,8 +28,9 @@ async def get_stats_details(
                 )
             
             # 转换为 API 模型
-            db_record = StatsRecordDB(**dict(record_row))
-            record = StatsRecordAPI.from_db(db_record)
+            # db_record = StatsRecordDB(**dict(record_row))
+            # record = StatsRecordAPI.from_db(db_record)
+            record = StatsRecord(**dict(record_row))
 
         # 获取详细统计信息（限制1000条）
         async with db.execute(
@@ -46,8 +47,9 @@ async def get_stats_details(
             # 转换为 API 模型
             infos = []
             for row in info_rows:
-                db_info = StatsInfoDB(**dict(row))
-                info = StatsInfoAPI.from_db(db_info)
+                # db_info = StatsInfoDB(**dict(row))
+                # info = StatsInfoAPI.from_db(db_info)
+                info = StatsInfo(**dict(row))
                 infos.append(info)
 
         # 返回组合的结果
@@ -232,11 +234,25 @@ async def get_stats(
         # 转换查询结果
         stats = []
         for row in rows:
-            # 先转换为数据库模型
-            db_model = StatsRecordDB(**dict(row))
-            # 再转换为 API 模型
-            api_model = StatsRecordAPI.from_db(db_model)
-            stats.append(api_model)
+            # 使用原始字段名创建模型
+            stat = StatsRecord(**dict(row))
+            # row_dict = dict(row)
+            # stat = StatsRecord(
+            #     id=row_dict['id'],
+            #     login_id=row_dict['login_id'],
+            #     app_id=row_dict['app_id'],
+            #     package=row_dict['package'],
+            #     product_name=row_dict['product_name'],
+            #     role_name=row_dict['role_name'],
+            #     device=row_dict['device'],
+            #     cpu=row_dict['cpu'],
+            #     gpu=row_dict['gpu'],
+            #     memory=row_dict['memory'],
+            #     gpu_memory=row_dict['gpu_memory'],
+            #     stat_time=row_dict['stat_time'],
+            #     created_at=row_dict['created_at']
+            # )
+            stats.append(stat)
 
         return {
             "total": total,

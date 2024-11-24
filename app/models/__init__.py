@@ -164,40 +164,77 @@ class ScriptParams(BaseModel):
 
 class StatsRecord(BaseModel):
     """统计记录基础模型"""
+
+    # 方法一，字段别名
     id: int
     login_id: int
     app_id: int
-    package: str
+    package: str = Field(..., alias="package_name")
     product_name: str
     role_name: str
-    device: str
-    cpu: str
-    gpu: str
-    memory: int
-    gpu_memory: int
-    stat_time: int
+    device: str = Field(..., alias="device_name")
+    cpu: str = Field(..., alias="system_cpu")
+    gpu: str = Field(..., alias="graphics_divice")
+    memory: int = Field(..., alias="system_mem")
+    gpu_memory: int = Field(..., alias="graphics_mem")
+    stat_time: int = Field(..., alias="mtime")
     created_at: int
 
-    @computed_field
-    def package_name(self) -> str:
-        return self.package
+    class Config:
+        # 允许通过原始字段名和别名字段名访问
+        populate_by_name = True
+        # 允许别名
+        allow_population_by_field_name = True
 
-    @computed_field
-    def device_name(self) -> str:
-        return self.device
+    # 方法三，计算方法
 
-    @computed_field
-    def system_cpu(self) -> str:
-        return self.cpu
+    # @computed_field
+    # def package_name(self) -> str:
+    #     return self.package
 
-    @computed_field
-    def graphics_divice(self) -> str:
-        return self.gpu
+    # @computed_field
+    # def device_name(self) -> str:
+    #     return self.device
 
-    @computed_field
-    def system_mem(self) -> int:
-        return self.memory
+    # @computed_field
+    # def system_cpu(self) -> str:
+    #     return self.cpu
 
-    @computed_field
-    def graphics_mem(self) -> int:
-        return self.gpu_memory
+    # @computed_field
+    # def graphics_divice(self) -> str:
+    #     return self.gpu
+
+    # @computed_field
+    # def system_mem(self) -> int:
+    #     return self.memory
+
+    # @computed_field
+    # def graphics_mem(self) -> int:
+    #     return self.gpu_memory
+
+class StatsInfo(BaseModel):
+    """使用的统计信息模型"""
+    id: int
+    login_id: int
+    fps: int
+    total_mem: int
+    used_mem: int
+    mono_used_mem: int
+    mono_heap_mem: int
+    texture: int
+    mesh: int
+    animation: int
+    audio: int
+    font: int
+    text_asset: int
+    shader: int
+    pic: str
+    process: str
+    stat_time: int = Field(..., alias="mtime")
+    created_at: int
+
+    class Config:
+        # 允许通过原始字段名和别名字段名访问
+        populate_by_name = True
+        # 允许别名
+        allow_population_by_field_name = True
