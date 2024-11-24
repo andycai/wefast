@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件浏览器</title>
+    <script src="/static/js/alpine-3.14.1.js" defer></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .file-browser {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .path-nav {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        .path-nav a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .path-nav a:hover {
+            text-decoration: underline;
+        }
+        .file-list {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .file-item:hover {
+            background-color: #f8f9fa;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .file-icon {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+        .file-name {
+            flex-grow: 1;
+        }
+        .file-size {
+            margin-right: 20px;
+            color: #666;
+        }
+        .file-time {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .file-content {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error-message {
+            color: #dc3545;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+        }
+        .parent-dir {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #eee;
+        }
+        .parent-dir:hover {
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="file-browser" x-data="fileBrowser()">
+        <!-- 路径导航 -->
+        <div class="path-nav">
+            <template x-for="(segment, index) in pathSegments" :key="index">
+                <span>
+                    <a href="#" @click.prevent="navigateTo(index)" x-text="segment || '根目录'"></a>
+                    <span x-show="index < pathSegments.length - 1"> / </span>
+                </span>
+            </template>
+        </div>
+
+        <!-- 错误消息 -->
+        <div x-show="error" class="error-message" x-text="error"></div>
+
+        <!-- 文件列表 -->
+        <div class="file-list" x-show="!currentContent">
+            <!-- 上级目录 -->
+            <template x-if="currentPath">
+                <div class="file-item parent-dir" @click="navigateToParent()">
+                    <div class="file-icon">
+                        <span>📁</span>
+                    </div>
+                    <div class="file-name">..</div>
+                    <div class="file-size"></div>
+                    <div class="file-time"></div>
+                </div>
+            </template>
+
+            <!-- 文件和目录列表 -->
+            <template x-for="item in items" :key="item.path">
+                <div class="file-item" @click="handleItemClick(item)">
+                    <div class="file-icon">
+                        <span x-text="item.is_dir ? '📁' : '📄'"></span>
+                    </div>
+                    <div class="file-name" x-text="item.name"></div>
+                    <div class="file-size" x-text="formatSize(item.size)"></div>
+                    <div class="file-time" x-text="formatTime(item.modified_time)"></div>
+                </div>
+            </template>
+        </div>
+
+        <!-- 文件内容 -->
+        <template x-if="currentContent">
+            <div>
+                <button @click="currentContent = null" class="back-button">返回</button>
+                <div class="file-content" x-text="currentContent"></div>
+            </div>
+        </template>
+    </div>
+
+    <script>
+        function fileBrowser() {
+            return {
+                currentPath: '',
+                items: [],
+                error: null,
+                currentContent: null,
+                pathSegments: [''],
+
+                init() {
+                    this.loadDirectory();
+                },
+
+                async loadDirectory() {
+                    try {
+                        const response = await fetch(`/api/files/list/${this.currentPath}`);
+                        if (!response.ok) {
+                            throw new Error('Failed to load directory');
+                        }
+                        this.items = await response.json();
+                        this.error = null;
+                        this.updatePathSegments();
+                    } catch (err) {
+                        this.error = `Error loading directory: ${err.message}`;
+                        this.items = [];
+                    }
+                },
+
+                async handleItemClick(item) {
+                    if (item.is_dir) {
+                        const relativePath = item.path.replace(/^.*?output\//, '');
+                        this.currentPath = relativePath;
+                        await this.loadDirectory();
+                    } else {
+                        await this.loadFile(item.path);
+                    }
+                },
+
+                async loadFile(path) {
+                    try {
+                        const relativePath = path.replace(/^.*?output\//, '');
+                        const response = await fetch(`/api/files/read/${relativePath}`);
+                        if (!response.ok) {
+                            throw new Error('Failed to load file');
+                        }
+                        const data = await response.json();
+                        this.currentContent = data.content;
+                        this.error = null;
+                    } catch (err) {
+                        this.error = `Error loading file: ${err.message}`;
+                    }
+                },
+
+                updatePathSegments() {
+                    this.pathSegments = [''].concat(this.currentPath.split('/').filter(Boolean));
+                },
+
+                navigateTo(index) {
+                    if (index === 0) {
+                        this.currentPath = '';
+                    } else {
+                        this.currentPath = this.pathSegments.slice(1, index + 1).join('/');
+                    }
+                    this.loadDirectory();
+                },
+
+                navigateToParent() {
+                    const segments = this.currentPath.split('/');
+                    segments.pop();
+                    this.currentPath = segments.join('/');
+                    this.loadDirectory();
+                },
+
+                formatSize(bytes) {
+                    const units = ['B', 'KB', 'MB', 'GB'];
+                    let size = bytes;
+                    let unitIndex = 0;
+                    while (size >= 1024 && unitIndex < units.length - 1) {
+                        size /= 1024;
+                        unitIndex++;
+                    }
+                    return `${size.toFixed(1)} ${units[unitIndex]}`;
+                },
+
+                formatTime(timestamp) {
+                    return new Date(timestamp).toLocaleString();
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
