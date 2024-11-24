@@ -70,3 +70,10 @@ class ShellResponse(BaseModel):
     output: str
     error: str | None = None
     exit_code: int
+
+class ScriptParams(BaseModel):
+    """脚本执行参数"""
+    repository: str | None = None
+    platform: str | None = None
+    publish_type: str | None = None
+    ext: str | None = None

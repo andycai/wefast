@@ -1,19 +1,33 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
-from app.models import ShellCommand, ShellResponse
+from app.models import ShellCommand, ShellResponse, ScriptParams
 import os
 from typing import List
+from pathlib import Path
 
 router = APIRouter()
 
-async def run_shell_command(command: str, working_dir: str | None = None) -> ShellResponse:
+scripts_dir = Path.cwd() / "sh"
+
+async def run_shell_command(
+    command: str,
+    working_dir: str | None = None,
+    env: dict | None = None
+) -> ShellResponse:
+    """执行shell命令，支持环境变量"""
     try:
+        # 合并环境变量
+        process_env = os.environ.copy()
+        if env:
+            process_env.update(env)
+
         # 创建子进程
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=working_dir
+            cwd=working_dir,
+            env=process_env
         )
         
         # 等待命令执行完成并获取输出
@@ -39,6 +53,7 @@ async def run_shell_command(command: str, working_dir: str | None = None) -> She
 
 @router.post("/execute", response_model=ShellResponse)
 async def execute_command(command: ShellCommand):
+    """执行普通命令"""
     # 安全检查：禁止执行某些危险命令
     forbidden_commands = ["rm -rf", "mkfs", "dd", ":(){ :|:& };:"]
     if any(cmd in command.command.lower() for cmd in forbidden_commands):
@@ -68,8 +83,6 @@ async def execute_command(command: ShellCommand):
 @router.get("/scripts", response_model=List[str])
 async def list_scripts():
     """列出可用的脚本文件"""
-    scripts_dir = "scripts"  # 脚本存放目录
-    
     if not os.path.exists(scripts_dir):
         os.makedirs(scripts_dir)
     
@@ -81,29 +94,73 @@ async def list_scripts():
     return scripts
 
 @router.post("/scripts/{script_name}", response_model=ShellResponse)
-async def execute_script(script_name: str):
-    """执行指定的脚本文件"""
-    scripts_dir = "scripts"
-    script_path = os.path.join(scripts_dir, script_name)
+async def execute_script(
+    script_name: str,
+    params: ScriptParams
+):
+    """执行指定的脚本文件，支持参数和环境变量"""
+    script_path = scripts_dir / script_name
     
-    if not os.path.exists(script_path):
+    if not script_path.exists():
         raise HTTPException(
             status_code=404,
             detail="Script not found"
         )
     
+    # 准备环境变量
+    env = {
+        "SCRIPT_REPOSITORY": params.repository or "",
+        "SCRIPT_PLATFORM": params.platform or "",
+        "SCRIPT_PUBLISH_TYPE": params.publish_type or "",
+        "SCRIPT_EXT": params.ext or ""
+    }
+
+    # 准备命令行参数
+    args = []
+    if params.repository:
+        args.append(f'"{params.repository}"')
+    if params.platform:
+        args.append(f'"{params.platform}"')
+    if params.publish_type:
+        args.append(f'"{params.publish_type}"')
+    if params.ext:
+        args.append(f'"{params.ext}"')
+
     # 根据脚本类型选择执行方式
     if script_name.endswith(".sh"):
-        command = f"bash {script_path}"
+        command = f"bash {script_path} {' '.join(args)}"
     elif script_name.endswith((".bat", ".cmd")):
-        command = script_path
+        command = f"{script_path} {' '.join(args)}"
     elif script_name.endswith(".ps1"):
-        command = f"powershell -File {script_path}"
+        command = f"powershell -File {script_path} {' '.join(args)}"
     else:
         raise HTTPException(
             status_code=400,
             detail="Unsupported script type"
         )
     
-    result = await run_shell_command(command, scripts_dir)
-    return result 
+    # 执行脚本
+    result = await run_shell_command(command, scripts_dir, env)
+
+    # 添加执行信息到输出
+    execution_info = {
+        "script": script_name,
+        "command": command,
+        "parameters": params.dict()
+    }
+
+    if result.success:
+        return ShellResponse(
+            success=True,
+            output=f"Execution Info:\n{str(execution_info)}\n\nOutput:\n{result.output}",
+            error=result.error,
+            exit_code=result.exit_code
+        )
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "execution_info": execution_info,
+                "error": result.error or "Script execution failed"
+            }
+        ) 
