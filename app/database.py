@@ -51,6 +51,7 @@ async def init_db():
                 gpu TEXT,
                 memory INTEGER,
                 gpu_memory INTEGER,
+                stat_time INTEGER,
                 created_at INTEGER
             )
         """)
@@ -84,6 +85,7 @@ async def init_db():
                 shader INTEGER,
                 pic TEXT,
                 process TEXT,
+                stat_time INTEGER,
                 created_at INTEGER
             )
         """)

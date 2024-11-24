@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS stats_infos (
     shader        INTEGER,
     pic           TEXT,
     process       TEXT,
-    stats_time    INTEGER,
+    stat_time     INTEGER,
     created_at    INTEGER
 );
 
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS stats_records (
     gpu          TEXT,
     memory       INTEGER,
     gpu_memory   INTEGER,
-    stats_time   INTEGER,
+    stat_time    INTEGER,
     created_at   INTEGER
 );
 
