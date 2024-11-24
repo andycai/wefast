@@ -389,10 +389,10 @@ async def create_stats(
     """创建统计记录和详细信息"""
     try:
         # 1. 处理图片数据
-        if stats.statsInfo.pic:
+        if stats.pic:
             try:
                 # 解码 base64 数据
-                image_data = base64.b64decode(stats.statsInfo.pic)
+                image_data = base64.b64decode(stats.pic)
                 
                 # 生成图片文件名
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -405,7 +405,7 @@ async def create_stats(
                 
                 # 更新图片路径
                 relative_path = f"uploads/{image_filename}"
-                stats.statsInfo.pic = relative_path
+                stats.pic = relative_path
                 
             except Exception as e:
                 raise HTTPException(
@@ -416,7 +416,7 @@ async def create_stats(
         # 2. 检查并处理 stats_records 数据
         async with db.execute(
             "SELECT id FROM stats_records WHERE login_id = ?",
-            (stats.statsRecord.login_id,)
+            (stats.login_id,)
         ) as cursor:
             existing_record = await cursor.fetchone()
 
@@ -431,9 +431,9 @@ async def create_stats(
                 RETURNING *
                 """,
                 (
-                    stats.statsRecord.role_name,
-                    stats.statsRecord.stat_time,
-                    stats.statsRecord.login_id
+                    stats.role_name,
+                    stats.stat_time,
+                    stats.login_id
                 )
             ) as cursor:
                 record_row = await cursor.fetchone()
@@ -450,17 +450,17 @@ async def create_stats(
                 RETURNING *
                 """,
                 (
-                    stats.statsRecord.login_id,
-                    stats.statsRecord.app_id,
-                    stats.statsRecord.package,
-                    stats.statsRecord.product_name,
-                    stats.statsRecord.role_name,
-                    stats.statsRecord.device,
-                    stats.statsRecord.cpu,
-                    stats.statsRecord.gpu,
-                    stats.statsRecord.memory,
-                    stats.statsRecord.gpu_memory,
-                    stats.statsRecord.stat_time,
+                    stats.login_id,
+                    stats.app_id,
+                    stats.package,
+                    stats.product_name,
+                    stats.role_name,
+                    stats.device,
+                    stats.cpu,
+                    stats.gpu,
+                    stats.memory,
+                    stats.gpu_memory,
+                    stats.stat_time,
                     int(datetime.now().timestamp() * 1000)
                 )
             ) as cursor:
@@ -479,22 +479,22 @@ async def create_stats(
             RETURNING *
             """,
             (
-                stats.statsInfo.login_id,
-                stats.statsInfo.fps,
-                stats.statsInfo.total_mem,
-                stats.statsInfo.used_mem,
-                stats.statsInfo.mono_used_mem,
-                stats.statsInfo.mono_heap_mem,
-                stats.statsInfo.texture,
-                stats.statsInfo.mesh,
-                stats.statsInfo.animation,
-                stats.statsInfo.audio,
-                stats.statsInfo.font,
-                stats.statsInfo.text_asset,
-                stats.statsInfo.shader,
-                stats.statsInfo.pic,
-                stats.statsInfo.process,
-                stats.statsInfo.stat_time,
+                stats.login_id,
+                stats.fps,
+                stats.total_mem,
+                stats.used_mem,
+                stats.mono_used_mem,
+                stats.mono_heap_mem,
+                stats.texture,
+                stats.mesh,
+                stats.animation,
+                stats.audio,
+                stats.font,
+                stats.text_asset,
+                stats.shader,
+                stats.pic,
+                stats.process,
+                stats.stat_time,
                 int(datetime.now().timestamp() * 1000)
             )
         ) as cursor:

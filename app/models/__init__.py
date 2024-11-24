@@ -240,6 +240,36 @@ class StatsInfo(BaseModel):
         allow_population_by_field_name = True
 
 class StatsRequest(BaseModel):
-    """统计数据请求模型"""
-    statsRecord: StatsRecord
-    statsInfo: StatsInfo
+    """统计数据请求模型 - 包含两个表的所有字段"""
+    # stats_records 表字段
+    login_id: int
+    app_id: int
+    package: str = Field(..., alias="package_name")
+    product_name: str
+    role_name: str
+    device: str = Field(..., alias="device_name")
+    cpu: str = Field(..., alias="system_cpu")
+    gpu: str = Field(..., alias="graphics_divice")
+    memory: int = Field(..., alias="system_mem")
+    gpu_memory: int = Field(..., alias="graphics_mem")
+    stat_time: int = Field(..., alias="mtime")
+
+    # stats_infos 表字段
+    fps: int
+    total_mem: int
+    used_mem: int
+    mono_used_mem: int
+    mono_heap_mem: int
+    texture: int
+    mesh: int
+    animation: int
+    audio: int
+    font: int
+    text_asset: int
+    shader: int
+    pic: str
+    process: str
+
+    class Config:
+        populate_by_name = True
+        allow_population_by_field_name = True
