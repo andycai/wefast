@@ -238,3 +238,8 @@ class StatsInfo(BaseModel):
         populate_by_name = True
         # 允许别名
         allow_population_by_field_name = True
+
+class StatsRequest(BaseModel):
+    """统计数据请求模型"""
+    statsRecord: StatsRecord
+    statsInfo: StatsInfo

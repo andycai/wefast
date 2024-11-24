@@ -1,11 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 import aiosqlite
 from app.database import get_db
-from app.models import StatsRecord, StatsInfo, StatsRecordDB, StatsRecordAPI, StatsInfoDB, StatsInfoAPI
+from app.models import StatsRecord, StatsInfo, StatsRecordDB, StatsRecordAPI, StatsInfoDB, StatsInfoAPI, StatsRequest
 from typing import List, Optional
 from datetime import datetime, time
+import base64
+from pathlib import Path
+import aiofiles
 
 router = APIRouter()
+
+# 创建上传目录
+UPLOAD_DIR = Path("public/uploads")
+if not UPLOAD_DIR.exists():
+    UPLOAD_DIR.mkdir(parents=True)
 
 # 1. 首先是所有具体的路径
 @router.get("/details")
@@ -371,4 +379,143 @@ async def delete_stats(stats_id: int, db: aiosqlite.Connection = Depends(get_db)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete stats: {str(e)}"
+        )
+
+@router.post("/", response_model=dict)
+async def create_stats(
+    stats: StatsRequest,
+    db: aiosqlite.Connection = Depends(get_db)
+):
+    """创建统计记录和详细信息"""
+    try:
+        # 1. 处理图片数据
+        if stats.statsInfo.pic:
+            try:
+                # 解码 base64 数据
+                image_data = base64.b64decode(stats.statsInfo.pic)
+                
+                # 生成图片文件名
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                image_filename = f"screenshot_{timestamp}.jpg"
+                image_path = UPLOAD_DIR / image_filename
+                
+                # 异步写入图片文件
+                async with aiofiles.open(image_path, 'wb') as f:
+                    await f.write(image_data)
+                
+                # 更新图片路径
+                relative_path = f"uploads/{image_filename}"
+                stats.statsInfo.pic = relative_path
+                
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to process image: {str(e)}"
+                )
+
+        # 2. 检查并处理 stats_records 数据
+        async with db.execute(
+            "SELECT id FROM stats_records WHERE login_id = ?",
+            (stats.statsRecord.login_id,)
+        ) as cursor:
+            existing_record = await cursor.fetchone()
+
+        if existing_record:
+            # 更新现有记录的 role_name
+            async with db.execute(
+                """
+                UPDATE stats_records 
+                SET role_name = ?, 
+                    stat_time = ?
+                WHERE login_id = ?
+                RETURNING *
+                """,
+                (
+                    stats.statsRecord.role_name,
+                    stats.statsRecord.stat_time,
+                    stats.statsRecord.login_id
+                )
+            ) as cursor:
+                record_row = await cursor.fetchone()
+                record = dict(record_row)
+        else:
+            # 插入新记录
+            async with db.execute(
+                """
+                INSERT INTO stats_records (
+                    login_id, app_id, package, product_name, role_name,
+                    device, cpu, gpu, memory, gpu_memory, stat_time,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING *
+                """,
+                (
+                    stats.statsRecord.login_id,
+                    stats.statsRecord.app_id,
+                    stats.statsRecord.package,
+                    stats.statsRecord.product_name,
+                    stats.statsRecord.role_name,
+                    stats.statsRecord.device,
+                    stats.statsRecord.cpu,
+                    stats.statsRecord.gpu,
+                    stats.statsRecord.memory,
+                    stats.statsRecord.gpu_memory,
+                    stats.statsRecord.stat_time,
+                    int(datetime.now().timestamp() * 1000)
+                )
+            ) as cursor:
+                record_row = await cursor.fetchone()
+                record = dict(record_row)
+
+        # 3. 插入 stats_infos 数据
+        async with db.execute(
+            """
+            INSERT INTO stats_infos (
+                login_id, fps, total_mem, used_mem, mono_used_mem,
+                mono_heap_mem, texture, mesh, animation, audio,
+                font, text_asset, shader, pic, process, stat_time,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING *
+            """,
+            (
+                stats.statsInfo.login_id,
+                stats.statsInfo.fps,
+                stats.statsInfo.total_mem,
+                stats.statsInfo.used_mem,
+                stats.statsInfo.mono_used_mem,
+                stats.statsInfo.mono_heap_mem,
+                stats.statsInfo.texture,
+                stats.statsInfo.mesh,
+                stats.statsInfo.animation,
+                stats.statsInfo.audio,
+                stats.statsInfo.font,
+                stats.statsInfo.text_asset,
+                stats.statsInfo.shader,
+                stats.statsInfo.pic,
+                stats.statsInfo.process,
+                stats.statsInfo.stat_time,
+                int(datetime.now().timestamp() * 1000)
+            )
+        ) as cursor:
+            info_row = await cursor.fetchone()
+            info = dict(info_row)
+
+        await db.commit()
+
+        return {
+            "code": 0,
+            "message": "Stats created successfully",
+            "data": {
+                "statsRecord": record,
+                "statsInfo": info
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create stats: {str(e)}"
         ) 
