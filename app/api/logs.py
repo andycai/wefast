@@ -1,43 +1,65 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 import aiosqlite
 from app.database import get_db
-from app.models import ErrorLog
+from app.models import Log
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, time
 
 router = APIRouter()
 
-@router.get("/", response_model=List[ErrorLog])
+@router.get("/", response_model=dict)
 async def get_logs(
-    level: Optional[str] = None,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
     db: aiosqlite.Connection = Depends(get_db)
 ):
-    """获取错误日志列表，支持按级别和时间范围过滤"""
+    """获取错误日志列表，支持分页和搜索"""
     try:
-        query = "SELECT * FROM error_logs WHERE 1=1"
+        # 构建基础查询
+        query = "SELECT * FROM logs WHERE 1=1"
+        count_query = "SELECT COUNT(*) as total FROM logs WHERE 1=1"
         params = []
 
-        if level:
-            query += " AND level = ?"
-            params.append(level)
+        # 添加搜索条件
+        if search:
+            search_term = f"%{search}%"
+            query += """ AND (
+                role_name LIKE ? OR 
+                log_message LIKE ?
+            )"""
+            count_query += """ AND (
+                role_name LIKE ? OR 
+                log_message LIKE ?
+            )"""
+            params.extend([search_term, search_term])
 
-        if start_time:
-            query += " AND timestamp >= ?"
-            params.append(start_time.isoformat())
+        # 获取总记录数
+        async with db.execute(count_query, params) as cursor:
+            total = (await cursor.fetchone())['total']
 
-        if end_time:
-            query += " AND timestamp <= ?"
-            params.append(end_time.isoformat())
+        # 计算分页
+        offset = (page - 1) * limit
+        total_pages = (total + limit - 1) // limit
 
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+        # 添加分页
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
+        # 执行查询
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            logs = [dict(row) for row in rows]
+
+        return {
+            "total": total,
+            "page": page,
+            "limit": limit,
+            # "total_pages": total_pages,
+            "logs": logs,
+            # "has_next": page < total_pages,
+            # "has_prev": page > 1
+        }
 
     except Exception as e:
         raise HTTPException(
@@ -45,20 +67,24 @@ async def get_logs(
             detail=f"Failed to fetch logs: {str(e)}"
         )
 
-@router.post("/", response_model=ErrorLog)
-async def create_log(log: ErrorLog, db: aiosqlite.Connection = Depends(get_db)):
-    """创建新的错误日志记录"""
+@router.post("/", response_model=Log)
+async def create_log(log: Log, db: aiosqlite.Connection = Depends(get_db)):
+    """创建新的日志记录"""
     try:
         async with db.execute(
             """
-            INSERT INTO error_logs (level, message, stack_trace)
-            VALUES (?, ?, ?)
+            INSERT INTO logs (
+                app_id, package, role_name, device,
+                log_message, log_time, log_type, log_stack, create_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (log.level, log.message, log.stack_trace)
+            (log.app_id, log.package, log.role_name, log.device,
+             log.log_message, log.log_time, log.log_type, log.log_stack,
+             int(datetime.now().timestamp() * 1000))
         ) as cursor:
-            await db.commit()
             row = await cursor.fetchone()
+            await db.commit()
             return dict(row)
 
     except Exception as e:
@@ -67,58 +93,12 @@ async def create_log(log: ErrorLog, db: aiosqlite.Connection = Depends(get_db)):
             detail=f"Failed to create log: {str(e)}"
         )
 
-@router.get("/summary")
-async def get_logs_summary(
-    days: int = 7,
-    db: aiosqlite.Connection = Depends(get_db)
-):
-    """获取日志统计摘要"""
-    try:
-        start_date = datetime.now() - timedelta(days=days)
-        
-        # 获取各级别日志数量
-        async with db.execute(
-            """
-            SELECT level, COUNT(*) as count
-            FROM error_logs
-            WHERE timestamp >= ?
-            GROUP BY level
-            """,
-            (start_date.isoformat(),)
-        ) as cursor:
-            level_stats = dict(await cursor.fetchall())
-
-        # 获取最近的错误趋势（按天统计）
-        async with db.execute(
-            """
-            SELECT date(timestamp) as date, COUNT(*) as count
-            FROM error_logs
-            WHERE timestamp >= ?
-            GROUP BY date(timestamp)
-            ORDER BY date
-            """,
-            (start_date.isoformat(),)
-        ) as cursor:
-            daily_trends = dict(await cursor.fetchall())
-
-        return {
-            "total_logs": sum(level_stats.values()),
-            "level_distribution": level_stats,
-            "daily_trends": daily_trends
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get logs summary: {str(e)}"
-        )
-
 @router.delete("/{log_id}")
 async def delete_log(log_id: int, db: aiosqlite.Connection = Depends(get_db)):
     """删除指定的日志记录"""
     try:
         async with db.execute(
-            "DELETE FROM error_logs WHERE id = ?",
+            "DELETE FROM logs WHERE id = ?",
             (log_id,)
         ):
             await db.commit()
@@ -134,11 +114,11 @@ async def delete_log(log_id: int, db: aiosqlite.Connection = Depends(get_db)):
 async def clear_old_logs(days: int, db: aiosqlite.Connection = Depends(get_db)):
     """清理指定天数之前的日志"""
     try:
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_time = int((datetime.now().timestamp() - days * 86400) * 1000)
         
         async with db.execute(
-            "DELETE FROM error_logs WHERE timestamp < ?",
-            (cutoff_date.isoformat(),)
+            "DELETE FROM logs WHERE create_at < ?",
+            (cutoff_time,)
         ):
             await db.commit()
             return {"message": f"Logs older than {days} days cleared successfully"}
@@ -147,4 +127,44 @@ async def clear_old_logs(days: int, db: aiosqlite.Connection = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to clear old logs: {str(e)}"
+        )
+
+@router.delete("/")
+async def delete_logs_by_date(
+    date: str = Query(..., description="删除此日期23:59:59之前的所有日志 (格式: YYYY-MM-DD)"),
+    db: aiosqlite.Connection = Depends(get_db)
+):
+    """删除指定日期之前的所有日志"""
+    try:
+        # 解析日期并设置为当天的23:59:59
+        try:
+            end_date = datetime.strptime(date, "%Y-%m-%d")
+            end_date = datetime.combine(end_date, time(23, 59, 59))
+            cutoff_time = int(end_date.timestamp() * 1000)  # 转换为毫秒时间戳
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid date format. Please use YYYY-MM-DD"
+            )
+
+        # 执行删除操作
+        async with db.execute(
+            "DELETE FROM logs WHERE create_at <= ?",
+            (cutoff_time,)
+        ) as cursor:
+            deleted_count = cursor.rowcount
+            await db.commit()
+            
+            return {
+                "message": f"Successfully deleted logs before {date} 23:59:59",
+                "deleted_count": deleted_count,
+                "cutoff_time": cutoff_time
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete logs: {str(e)}"
         ) 
