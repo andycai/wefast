@@ -93,49 +93,7 @@ async def create_log(log: Log, db: aiosqlite.Connection = Depends(get_db)):
             detail=f"Failed to create log: {str(e)}"
         )
 
-@router.delete("/{log_id}")
-async def delete_log(log_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    """删除指定的日志记录"""
-    try:
-        async with db.execute(
-            "DELETE FROM logs WHERE id = ?",
-            (log_id,)
-        ):
-            await db.commit()
-            return {
-                "code":0,
-                "message": f"Log {log_id} deleted successfully"
-                }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete log: {str(e)}"
-        )
-
-@router.delete("/clear/{days}")
-async def clear_old_logs(days: int, db: aiosqlite.Connection = Depends(get_db)):
-    """清理指定天数之前的日志"""
-    try:
-        cutoff_time = int((datetime.now().timestamp() - days * 86400) * 1000)
-        
-        async with db.execute(
-            "DELETE FROM logs WHERE create_at < ?",
-            (cutoff_time,)
-        ):
-            await db.commit()
-            return {
-                "code":0, 
-                "message": f"Logs older than {days} days cleared successfully"
-                }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to clear old logs: {str(e)}"
-        )
-
-@router.delete("/")
+@router.delete("/before")
 async def delete_logs_by_date(
     date: str = Query(..., description="删除此日期23:59:59之前的所有日志 (格式: YYYY-MM-DD)"),
     db: aiosqlite.Connection = Depends(get_db)
@@ -174,4 +132,46 @@ async def delete_logs_by_date(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete logs: {str(e)}"
+        )
+
+@router.delete("/{log_id}")
+async def delete_log(log_id: int, db: aiosqlite.Connection = Depends(get_db)):
+    """删除指定的日志记录"""
+    try:
+        async with db.execute(
+            "DELETE FROM logs WHERE id = ?",
+            (log_id,)
+        ):
+            await db.commit()
+            return {
+                "code": 0,
+                "message": f"Log {log_id} deleted successfully"
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete log: {str(e)}"
+        )
+
+@router.delete("/clear/{days}")
+async def clear_old_logs(days: int, db: aiosqlite.Connection = Depends(get_db)):
+    """清理指定天数之前的日志"""
+    try:
+        cutoff_time = int((datetime.now().timestamp() - days * 86400) * 1000)
+        
+        async with db.execute(
+            "DELETE FROM logs WHERE create_at < ?",
+            (cutoff_time,)
+        ):
+            await db.commit()
+            return {
+                "code": 0,
+                "message": f"Logs older than {days} days cleared successfully"
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear old logs: {str(e)}"
         ) 
