@@ -102,7 +102,10 @@ async def delete_log(log_id: int, db: aiosqlite.Connection = Depends(get_db)):
             (log_id,)
         ):
             await db.commit()
-            return {"message": f"Log {log_id} deleted successfully"}
+            return {
+                "code":0,
+                "message": f"Log {log_id} deleted successfully"
+                }
 
     except Exception as e:
         raise HTTPException(
@@ -121,7 +124,10 @@ async def clear_old_logs(days: int, db: aiosqlite.Connection = Depends(get_db)):
             (cutoff_time,)
         ):
             await db.commit()
-            return {"message": f"Logs older than {days} days cleared successfully"}
+            return {
+                "code":0, 
+                "message": f"Logs older than {days} days cleared successfully"
+                }
 
     except Exception as e:
         raise HTTPException(
@@ -156,6 +162,7 @@ async def delete_logs_by_date(
             await db.commit()
             
             return {
+                "code": 0,
                 "message": f"Successfully deleted logs before {date} 23:59:59",
                 "deleted_count": deleted_count,
                 "cutoff_time": cutoff_time
