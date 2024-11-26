@@ -184,7 +184,7 @@ class StatsRecord(BaseModel):
         # 允许通过原始字段名和别名字段名访问
         populate_by_name = True
         # 允许别名
-        allow_population_by_field_name = True
+        # allow_population_by_field_name = True
 
     # 方法三，计算方法
 
@@ -237,7 +237,7 @@ class StatsInfo(BaseModel):
         # 允许通过原始字段名和别名字段名访问
         populate_by_name = True
         # 允许别名
-        allow_population_by_field_name = True
+        # allow_population_by_field_name = True
 
 class StatsRequest(BaseModel):
     """统计数据请求模型 - 包含两个表的所有字段"""
@@ -272,4 +272,4 @@ class StatsRequest(BaseModel):
 
     class Config:
         populate_by_name = True
-        allow_population_by_field_name = True
+        # allow_population_by_field_name = True

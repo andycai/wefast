@@ -1,0 +1,13 @@
+FROM cdrx/pyinstaller-linux:python3.11
+
+# 复制项目文件
+COPY . /src/
+WORKDIR /src
+
+# 安装依赖
+RUN pip install -r requirements.txt
+
+# 执行打包
+RUN pyinstaller build.spec
+
+# 输出目录将在 /src/dist 
