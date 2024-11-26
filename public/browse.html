@@ -82,6 +82,48 @@
         .parent-dir:hover {
             background-color: #e9ecef;
         }
+        .file-actions {
+            margin-left: 10px;
+            display: flex;
+            gap: 5px;
+        }
+        
+        .delete-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 5px;
+            font-size: 16px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .delete-btn:hover {
+            opacity: 1;
+        }
+        
+        /* 确认对话框样式 */
+        .confirm-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
     </style>
 </head>
 <body>
@@ -115,13 +157,23 @@
 
             <!-- 文件和目录列表 -->
             <template x-for="item in items" :key="item.path">
-                <div class="file-item" @click="handleItemClick(item)">
+                <div class="file-item">
                     <div class="file-icon">
                         <span x-text="item.is_dir ? '📁' : '📄'"></span>
                     </div>
-                    <div class="file-name" x-text="item.name"></div>
+                    <div class="file-name" @click="handleItemClick(item)" x-text="item.name"></div>
                     <div class="file-size" x-text="formatSize(item.size)"></div>
                     <div class="file-time" x-text="formatTime(item.modified_time)"></div>
+                    <!-- 添加删除按钮 -->
+                    <div class="file-actions" x-show="!item.is_dir">
+                        <button 
+                            class="delete-btn"
+                            @click.stop="deleteFile(item)"
+                            title="删除文件"
+                        >
+                            🗑️
+                        </button>
+                    </div>
                 </div>
             </template>
         </div>
@@ -221,7 +273,30 @@
 
                 formatTime(timestamp) {
                     return new Date(timestamp).toLocaleString();
-                }
+                },
+
+                async deleteFile(item) {
+                    if (!confirm(`确定要删除文件 "${item.name}" 吗？`)) {
+                        return;
+                    }
+                    
+                    try {
+                        const relativePath = item.path.replace(/^.*?output\//, '');
+                        const response = await fetch(`/api/files/delete/${relativePath}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to delete file');
+                        }
+                        
+                        // 重新加载目录
+                        await this.loadDirectory();
+                        
+                    } catch (err) {
+                        this.error = `Error deleting file: ${err.message}`;
+                    }
+                },
             }
         }
     </script>

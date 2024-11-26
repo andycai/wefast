@@ -160,4 +160,46 @@ async def get_path_info(path: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get path info: {str(e)}"
+        )
+
+@router.delete("/delete/{path:path}")
+async def delete_file(path: str):
+    """删除文件"""
+    try:
+        # 转换为绝对路径并进行安全检查
+        file_path = (base_path / path).resolve()
+        
+        # 确保路径不会超出基础目录
+        if not str(file_path).startswith(str(base_path)):
+            raise HTTPException(
+                status_code=403,
+                detail="Access to parent directory is not allowed"
+            )
+        
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="File not found"
+            )
+            
+        if not file_path.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail="Path is not a file"
+            )
+        
+        # 删除文件
+        file_path.unlink()
+        
+        return {
+            "code": 0,
+            "message": "File deleted successfully"
+        }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete file: {str(e)}"
         ) 
