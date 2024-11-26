@@ -17,6 +17,8 @@ ENV/
 *.swo
 
 # Project specific
+build/
+dist/
 db/*.db
 output/
 logs/ 
